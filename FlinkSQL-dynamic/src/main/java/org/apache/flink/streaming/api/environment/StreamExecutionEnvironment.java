@@ -17,14 +17,13 @@
 
 package org.apache.flink.streaming.api.environment;
 
+import com.esotericsoftware.minlog.Log;
+import dynamic.FindChangeEntity;
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.Public;
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.InvalidProgramException;
-import org.apache.flink.api.common.JobExecutionResult;
-import org.apache.flink.api.common.RuntimeExecutionMode;
+import org.apache.flink.api.common.*;
 import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.InvalidTypesException;
@@ -38,6 +37,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.connector.source.Source;
 import org.apache.flink.api.connector.source.lib.NumberSequenceSource;
+import org.apache.flink.api.dag.Pipeline;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.api.java.Utils;
@@ -48,6 +48,8 @@ import org.apache.flink.api.java.typeutils.MissingTypeInfo;
 import org.apache.flink.api.java.typeutils.PojoTypeInfo;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
+import org.apache.flink.client.deployment.executors.LocalExecutor;
+import org.apache.flink.client.program.PerJobMiniClusterFactory;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.DeploymentOptions;
@@ -63,6 +65,7 @@ import org.apache.flink.core.execution.PipelineExecutor;
 import org.apache.flink.core.execution.PipelineExecutorFactory;
 import org.apache.flink.core.execution.PipelineExecutorServiceLoader;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.StateBackendLoader;
@@ -99,17 +102,14 @@ import org.apache.flink.util.StringUtils;
 import org.apache.flink.util.WrappingRuntimeException;
 
 import com.esotericsoftware.kryo.Serializer;
+import org.apache.kafka.common.protocol.types.Field;
+import scala.tools.nsc.backend.icode.Members;
 
 import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -243,7 +243,8 @@ public class StreamExecutionEnvironment {
         this.configure(this.configuration, this.userClassloader);
     }
 
-    protected Configuration getConfiguration() {
+//    change protected to public
+    public Configuration getConfiguration() {
         return this.configuration;
     }
 
@@ -1803,9 +1804,9 @@ public class StreamExecutionEnvironment {
             } else {
                 jobExecutionResult = new DetachedJobExecutionResult(jobClient.getJobID());
             }
-
             jobListeners.forEach(
                     jobListener -> jobListener.onJobExecuted(jobExecutionResult, null));
+
 
             return jobExecutionResult;
         } catch (Throwable t) {
@@ -1919,6 +1920,56 @@ public class StreamExecutionEnvironment {
                     strippedException);
         }
     }
+//add new function
+//    @Internal
+//    public JobClient executeAsync(StreamGraph streamGraph, StreamGraph newGragh) throws Exception {
+//        checkNotNull(streamGraph, "StreamGraph cannot be null.");
+//        checkNotNull(
+//                configuration.get(DeploymentOptions.TARGET),
+//                "No execution.target specified in your configuration file.");
+//
+//        final PipelineExecutorFactory executorFactory =
+//                executorServiceLoader.getExecutorFactory(configuration);
+//
+//        checkNotNull(
+//                executorFactory,
+//                "Cannot find compatible factory for specified execution.target (=%s)",
+//                configuration.get(DeploymentOptions.TARGET));
+//        LocalExecutor executor = (LocalExecutor) executorFactory
+//                .getExecutor(configuration);
+//        checkNotNull(streamGraph);
+//        checkNotNull(configuration);
+//        Configuration effectiveConfig = new Configuration();
+//        effectiveConfig.addAll(this.configuration);
+//        effectiveConfig.addAll(configuration);
+//        Preconditions.checkState(configuration.getBoolean(DeploymentOptions.ATTACHED));
+//        executor.getJobGraph(streamGraph, effectiveConfig, userClassloader);
+//
+//        try {
+//            JobClient jobClient = jobClientFuture.get();
+//            jobListeners.forEach(jobListener -> jobListener.onJobSubmitted(jobClient, null));
+//            return jobClient;
+//        } catch (ExecutionException executionException) {
+//            final Throwable strippedException =
+//                    ExceptionUtils.stripExecutionException(executionException);
+//            jobListeners.forEach(
+//                    jobListener -> jobListener.onJobSubmitted(null, strippedException));
+//
+//            throw new FlinkException(
+//                    String.format("Failed to execute job '%s'.", streamGraph.getJobName()),
+//                    strippedException);
+//        }
+//    }
+//    public CompletableFuture<JobClient> execute(Pipeline pipeline, Configuration configuration, ClassLoader userCodeClassloader) throws Exception {
+//        Preconditions.checkNotNull(pipeline);
+//        Preconditions.checkNotNull(configuration);
+//        Configuration effectiveConfig = new Configuration();
+//        effectiveConfig.addAll(this.configuration);
+//        effectiveConfig.addAll(configuration);
+//        Preconditions.checkState(configuration.getBoolean(DeploymentOptions.ATTACHED));
+//        JobGraph jobGraph = this.getJobGraph(pipeline, effectiveConfig);
+//        return PerJobMiniClusterFactory.createWithFactory(effectiveConfig, this.miniClusterFactory).submitJob(jobGraph, userCodeClassloader);
+//    }
 
     /**
      * Getter of the {@link StreamGraph} of the streaming job.
@@ -2293,7 +2344,75 @@ public class StreamExecutionEnvironment {
         return (T) resolvedTypeInfo;
     }
 
-    private String getJobName() {
+//    change private to public
+    public String getJobName() {
         return configuration.getString(PipelineOptions.NAME, DEFAULT_JOB_NAME);
+    }
+//    execute by JobGraph
+//    @Internal
+//    public JobClient executeAsync(JobGraph jobGraph) throws Exception {
+//            return  new JobClient() {
+//                @Override
+//                public JobID getJobID() {
+//                    return null;
+//                }
+//
+//                @Override
+//                public CompletableFuture<JobStatus> getJobStatus() {
+//                    return null;
+//                }
+//
+//                @Override
+//                public CompletableFuture<Void> cancel() {
+//                    return null;
+//                }
+//
+//                @Override
+//                public CompletableFuture<String> stopWithSavepoint(boolean b, @Nullable String s) {
+//                    return null;
+//                }
+//
+//                @Override
+//                public CompletableFuture<String> triggerSavepoint(@Nullable String s) {
+//                    return null;
+//                }
+//
+//                @Override
+//                public CompletableFuture<Map<String, Object>> getAccumulators() {
+//                    return null;
+//                }
+//
+//                @Override
+//                public CompletableFuture<JobExecutionResult> getJobExecutionResult() {
+//                    return null;
+//                }
+//            }
+//    }
+
+    @Internal
+    public void execute(StreamGraph streamGraph, FindChangeEntity fc) throws Exception {
+        //默认每分钟去判断一次是否需要更换的逻辑
+        execute(streamGraph, fc, 60000L);
+    }
+
+    @Internal
+    public void execute(StreamGraph streamGraph, FindChangeEntity fc, long period) throws Exception {
+        JobClient jobClient = executeAsync(streamGraph);
+        Timer timer = new Timer(true);
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                if (fc.isChanged()) {
+                    try {
+                        jobClient.cancel();
+                        timer.cancel();
+                        System.out.println("change to new rule!");
+                        execute(fc.returnStreamGraph(), fc, period);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        },1000L, period);
     }
 }
